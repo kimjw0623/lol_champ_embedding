@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 
 engine = create_engine('sqlite:///asd.db', echo=True)
 from sqlalchemy import MetaData
-meta = MetaData()
-from sqlalchemy import Table, Column, Integer, String, MetaData
 
+from sqlalchemy import Table, Column, Integer, String, MetaData
+meta = MetaData()
 members = Table(
     'members', meta,
     Column('id', Integer, primary_key=True),
@@ -21,7 +21,11 @@ ins = members.insert().values(name = 'RM', age = 26)
 conn = engine.connect()
 result = conn.execute(ins)
 
-print(result)
+sel = members.select()
+result = conn.execute(sel)
+
+for row in result:
+    print(row)
 
 #########################################################
 
