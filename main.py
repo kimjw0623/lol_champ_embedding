@@ -1,5 +1,6 @@
 import os
 import logging
+import csv
 
 import requests
 import urllib3
@@ -51,6 +52,11 @@ for champName in champion_info_response.json()['data'].keys():
 ###########################################################################
 
 summonerNameList = ['hide on bush','unpause','칼과 창 방패']
+
+with open('id_list.csv', mode='r', encoding='utf-8-sig') as inp:
+    reader = csv.reader(inp)
+    for rows in reader:
+        summonerNameList.append(rows[1])
 
 URL_ID_BY_NAME = 'https://{region}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{userName}?api_key={apiKey}'
 
