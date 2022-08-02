@@ -82,6 +82,7 @@ for summonerName in summonerNameList:
                                         apiKey = apikey))
 
     summonerInfo = json.loads(summonerInfoResponse.text)
+    print(summonerInfo)
     summonerInfoDf = pd.DataFrame(summonerInfo, index = [0])[['id', 'accountId','puuid']]
     summonerInfoDf.to_sql('summoner_ids', connId, if_exists='append')
 
