@@ -9,6 +9,8 @@ import requests
 import random
 import itertools
 import math
+import time
+from einops import rearrange, reduce, repeat
 
 # SQL and ORM
 import sqlite3
@@ -47,22 +49,32 @@ class Dataset(torch.utils.data.Dataset):
         for comb in champComb:
             champ1Point = pointDict[comb[0]]
             champ2Point = pointDict[comb[1]]
-            if champ1Point is None or champ2Point is None:
-                continue
+            if champ1Point is None:
+                champ1Point = 10
+            if champ2Point is None:
+                champ2Point = 10
+            # if champ1Point is None or champ2Point is None:
+            #     continue
             similarity = math.sqrt(champ1Point * champ2Point) / pointDict['sum'] # normalize point?
             # (champ1 index, champ2 index, dot product) Not champion id!!
             result.append((CHAMP_TO_INDEX[comb[0]],CHAMP_TO_INDEX[comb[1]],similarity))
             
         result = torch.tensor(result)
+        # print(result.shape)
         return result
     
     # Select champion pair with weight
     def _champion_choice(self,champPointDict):
         # Give weight according to the mastery point
-        pointList = [0 if x==None else pow(int(x),0.7) for x in list(champPointDict.values())[2:]]
+        pointList = [10 if x==None else pow(int(x),0.9) for x in list(champPointDict.values())[2:]]
         # Select 15 champions
-        champWeightedList = random.choices(list(ID_TO_CHAMP.values()), weights=pointList, k=15)
+        pointList = np.array(pointList)/np.ndarray.sum(np.array(pointList))
+        if len(pointList) != len(list(ID_TO_CHAMP.values())):
+            len(pointList)
+            len(list(ID_TO_CHAMP.values()))
+        champWeightedList = list(np.random.choice(np.array(list(ID_TO_CHAMP.values())), p=pointList, size=15, replace=False))
         champComb = list(itertools.combinations(champWeightedList, 2)) # list of tuple (champName, champName) <- string
+        # print(len(champComb))
         return champComb
     
 class Model(nn.Module):
@@ -86,10 +98,13 @@ sel = select(meta.tables['summoner_mastery_table']) # get all column if blank
 masteryResult = connMastery.execute(sel)
 summonerMasteryResult = []
 for elem in masteryResult:
-    summonerMasteryResult.append(dict(elem))
-    
+    if elem['sum'] > 500000:
+        summonerMasteryResult.append(dict(elem))
+print(len(summonerMasteryResult))    
+time.sleep(2)
 ######
 
+IS_TRAIN = True
 # Training step
 train_dataset = Dataset(summonerMasteryResult)
 training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True)
@@ -101,28 +116,37 @@ print(f'Torch device: {device}')
 net = Model(161,15)#.cuda()
 net.train()
 optimizer = optim.Adam(net.parameters())
-total_epoch = 2000
+total_epoch = 100
 iteration = 0
 total_iter = total_epoch*train_dataset.__len__()
+print(total_iter)
 # what I learn:
+if IS_TRAIN:
+    for epoch in range(total_epoch):
+        for account in training_generator:
+            # account: (B, 1, 105, 3)
+            optimizer.zero_grad()
+            # print(account.shape)
+            #account = rearrange(account, 'B C A -> (B C) A')
+            # print(account.shape)
+            #champ1 = account[0].to(torch.int) # champ1 index list
+            champ1 = account[0,:,0].to(torch.int)
+            #champ2 = account[1].to(torch.int) # champ2 index list
+            champ2 = account[0,:,1].to(torch.int)
+            gt_score = account[0,:,2] # champion dot product
+            pred_score = net(champ1,champ2).view(-1,)
+            loss = F.mse_loss(pred_score, gt_score) # get batch avg loss!
+            iteration += 1
+            print(f'Iter: {iteration:06d} / {total_iter:06d} | Loss: {loss.item():.6f}')
+            loss.backward()
+            optimizer.step()
+    # Save model
+    torch.save({'model_state_dict': net.state_dict()}, 'embedding.pt')
+else:
+    # Load model
+    net.load_state_dict(torch.load('embedding.pt')['model_state_dict'])
+    net.eval()
 
-for epoch in range(total_epoch):
-    for account in training_generator:
-        print(account.shape)
-        optimizer.zero_grad()
-        champ1 = account[0,:,0].to(torch.int) # champ1 index list
-        champ2 = account[0,:,1].to(torch.int) # champ2 index list
-        gt_score = account[0,:,2] # champion dot product
-        pred_score = net(champ1,champ2).view(-1,)
-        loss = F.mse_loss(pred_score, gt_score)
-        iteration += 1
-        print(f'Iter: {iteration:06d} / {total_iter:06d} | Loss: {loss.item():.4f}')
-        loss.backward()
-        optimizer.step()
-
-# Save model
-torch.save({'model_state_dict': net.state_dict()}, 'embedding.pt')
-    
 # Embedding vector visualization
 for param in net.parameters():
     print(type(param), param.size())
@@ -131,8 +155,9 @@ for param in net.parameters():
     
 champ_embedding = champ_embedding / np.linalg.norm(champ_embedding, axis = 1).reshape(-1, 1)
 print(champ_embedding.shape)
-ahri = (np.expand_dims(champ_embedding[1],0) @ champ_embedding.T)[0]
-
-ahri_dict = dict(zip(ID_TO_CHAMP.values(),ahri))
-ahri_dict = dict(sorted(ahri_dict.items(), key=lambda item: item[1], reverse=True))
-print(ahri_dict)
+for i in range(161):
+    champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
+    champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
+    champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
+    print(champ_dict)
+    print()

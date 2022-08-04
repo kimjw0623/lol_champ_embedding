@@ -132,29 +132,38 @@ URL_MASTERY_BY_ID = 'https://{region}.api.riotgames.com/lol/champion-mastery/v4/
 
 idList = connId.execute(sel)
 apiCall = 0
+checkUniqueId = []
 for row in idList:
+    if row.id in checkUniqueId:
+        print('duplicated')
+        continue
     summonerMasteryResponse = requests.get(URL_MASTERY_BY_ID.format(
                                         region = REGION,
                                         summonerId = row.id,
                                         apiKey = apikey))
     apiCall += 1
+    checkUniqueId.append(row.id)
     summonerMasteryInfo = json.loads(summonerMasteryResponse.text)
     summonerMasteryDic = {}
     summonerMasteryDic['id'] = row.id
     pointSum = 0
-    for elem in summonerMasteryInfo:
-        champId = elem['championId']
-        champPoints = elem['championPoints']
-        pointSum += champPoints
-        summonerMasteryDic[ID_TO_CHAMP[champId]] = champPoints
-        
+    # Response exception
+    try:
+        for elem in summonerMasteryInfo:
+            champId = elem['championId']
+            champPoints = elem['championPoints']
+            pointSum += champPoints
+            summonerMasteryDic[ID_TO_CHAMP[champId]] = champPoints
+    except:
+        break
     summonerMasteryDic['sum'] = pointSum
     print(pointSum)
+    print(row.id)
     summonerMasteryDf = pd.DataFrame(summonerMasteryDic, index = [0])
     summonerMasteryDf.to_sql('summoner_mastery_table', connMastery, if_exists='append', index=False)
-    if apiCall%95 == 0:
+    if apiCall%99 == 0:
         print('sleep')
-        time.sleep(130)
+        time.sleep(120)
 
 sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
 result = connMastery.execute(sel)
