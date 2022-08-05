@@ -11,6 +11,13 @@ import itertools
 import math
 import time
 from einops import rearrange, reduce, repeat
+from PIL import Image
+from io import BytesIO 
+from tqdm import tqdm
+
+from matplotlib import pyplot as plt
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from sklearn import manifold 
 
 # SQL and ORM
 import sqlite3
@@ -53,10 +60,8 @@ class Dataset(torch.utils.data.Dataset):
                 champ1Point = 10
             if champ2Point is None:
                 champ2Point = 10
-            # if champ1Point is None or champ2Point is None:
-            #     continue
             similarity = math.sqrt(champ1Point * champ2Point) / pointDict['sum'] # normalize point?
-            # (champ1 index, champ2 index, dot product) Not champion id!!
+            # (champ1 index, champ2 index, dot product): Not champion id!!
             result.append((CHAMP_TO_INDEX[comb[0]],CHAMP_TO_INDEX[comb[1]],similarity))
             
         result = torch.tensor(result)
@@ -102,9 +107,10 @@ for elem in masteryResult:
         summonerMasteryResult.append(dict(elem))
 print(len(summonerMasteryResult))    
 time.sleep(2)
-######
 
-IS_TRAIN = True
+######
+IS_TRAIN = False
+
 # Training step
 train_dataset = Dataset(summonerMasteryResult)
 training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True)
@@ -154,10 +160,50 @@ for param in net.parameters():
     break
     
 champ_embedding = champ_embedding / np.linalg.norm(champ_embedding, axis = 1).reshape(-1, 1)
-print(champ_embedding.shape)
-for i in range(161):
-    champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
-    champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
-    champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
-    print(champ_dict)
-    print()
+
+# for i in range(161):
+#     champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
+#     champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
+#     champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
+#     print(champ_dict)
+#     print()
+
+###
+# Championbilder
+CHAMPION_BILDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
+ICON_ZOOM = 0.03
+REGION = 'kr'
+
+championBilder = list()
+champList = list(champion_info_response.json()['data'].keys())
+print(champList)
+for champion in tqdm(champList, total = len(champList)):
+    while True:
+        bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
+        if bildAntwort.status_code == 200:
+            break
+        else:
+            time.sleep(0.1)
+    
+    championBilder.append(Image.open(BytesIO(bildAntwort.content)))
+            
+###
+# TSNE
+tsneTransformation = manifold.TSNE(n_components = 2)
+tsneMatrix = tsneTransformation.fit_transform(champ_embedding)
+
+tsne2dDf = pd.DataFrame(tsneMatrix, columns = ['X1', 'X2'])
+tsne2dDf['Champion'] = champList
+
+# Matplotlib
+fig = plt.figure(figsize=(3, 2), dpi=100)
+ax = fig.add_subplot(1, 1, 1)
+
+ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
+ax.axis('off')
+for i in range(0, len(champList)):
+    bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
+    ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+
+fig.savefig("champion_clustering_tsne_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
+plt.close()
