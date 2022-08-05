@@ -19,6 +19,8 @@ from matplotlib import pyplot as plt
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from sklearn import manifold 
 
+from sklearn.decomposition import PCA
+
 # SQL and ORM
 import sqlite3
 import pandas as pd
@@ -71,13 +73,13 @@ class Dataset(torch.utils.data.Dataset):
     # Select champion pair with weight
     def _champion_choice(self,champPointDict):
         # Give weight according to the mastery point
-        pointList = [10 if x==None else pow(int(x),0.9) for x in list(champPointDict.values())[2:]]
+        pointList = [10 if x==None else pow(int(x),0.5) for x in list(champPointDict.values())[2:]]
         # Select 15 champions
         pointList = np.array(pointList)/np.ndarray.sum(np.array(pointList))
         if len(pointList) != len(list(ID_TO_CHAMP.values())):
             len(pointList)
             len(list(ID_TO_CHAMP.values()))
-        champWeightedList = list(np.random.choice(np.array(list(ID_TO_CHAMP.values())), p=pointList, size=15, replace=False))
+        champWeightedList = list(np.random.choice(np.array(list(ID_TO_CHAMP.values())), p=pointList, size=20, replace=False))
         champComb = list(itertools.combinations(champWeightedList, 2)) # list of tuple (champName, champName) <- string
         # print(len(champComb))
         return champComb
@@ -110,10 +112,11 @@ time.sleep(2)
 
 ######
 IS_TRAIN = False
+batch_size = 64
 
 # Training step
 train_dataset = Dataset(summonerMasteryResult)
-training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True)
+training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -122,9 +125,9 @@ print(f'Torch device: {device}')
 net = Model(161,15)#.cuda()
 net.train()
 optimizer = optim.Adam(net.parameters())
-total_epoch = 100
+total_epoch = 150
 iteration = 0
-total_iter = total_epoch*train_dataset.__len__()
+total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
 print(total_iter)
 # what I learn:
 if IS_TRAIN:
@@ -132,16 +135,12 @@ if IS_TRAIN:
         for account in training_generator:
             # account: (B, 1, 105, 3)
             optimizer.zero_grad()
-            # print(account.shape)
-            #account = rearrange(account, 'B C A -> (B C) A')
-            # print(account.shape)
-            #champ1 = account[0].to(torch.int) # champ1 index list
-            champ1 = account[0,:,0].to(torch.int)
-            #champ2 = account[1].to(torch.int) # champ2 index list
-            champ2 = account[0,:,1].to(torch.int)
-            gt_score = account[0,:,2] # champion dot product
+            account = rearrange(account, 'B C A -> (B C) A')
+            champ1 = account[:,0].to(torch.int)
+            champ2 = account[:,1].to(torch.int)
+            gt_score = account[:,2] # dot product of mastery point
             pred_score = net(champ1,champ2).view(-1,)
-            loss = F.mse_loss(pred_score, gt_score) # get batch avg loss!
+            loss = F.mse_loss(pred_score, gt_score) # get batch avg loss! 
             iteration += 1
             print(f'Iter: {iteration:06d} / {total_iter:06d} | Loss: {loss.item():.6f}')
             loss.backward()
@@ -161,12 +160,12 @@ for param in net.parameters():
     
 champ_embedding = champ_embedding / np.linalg.norm(champ_embedding, axis = 1).reshape(-1, 1)
 
-# for i in range(161):
-#     champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
-#     champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
-#     champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
-#     print(champ_dict)
-#     print()
+for i in range(161):
+    champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
+    champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
+    champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
+    print(list(champ_dict.keys())[:10])
+    print()
 
 ###
 # Championbilder
@@ -174,36 +173,41 @@ CHAMPION_BILDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champi
 ICON_ZOOM = 0.03
 REGION = 'kr'
 
-championBilder = list()
-champList = list(champion_info_response.json()['data'].keys())
-print(champList)
-for champion in tqdm(champList, total = len(champList)):
-    while True:
-        bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
-        if bildAntwort.status_code == 200:
-            break
-        else:
-            time.sleep(0.1)
+# championBilder = list()
+# champList = list(champion_info_response.json()['data'].keys())
+# for champion in tqdm(champList, total = len(champList)):
+#     while True:
+#         bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
+#         if bildAntwort.status_code == 200:
+#             break
+#         else:
+#             time.sleep(0.1)
     
-    championBilder.append(Image.open(BytesIO(bildAntwort.content)))
+#     championBilder.append(Image.open(BytesIO(bildAntwort.content)))
             
-###
-# TSNE
-tsneTransformation = manifold.TSNE(n_components = 2)
-tsneMatrix = tsneTransformation.fit_transform(champ_embedding)
+# ###
+# # TSNE
+# tsne = manifold.TSNE(n_components = 2)
+# tsneMatrix = tsne.fit_transform(champ_embedding)
 
-tsne2dDf = pd.DataFrame(tsneMatrix, columns = ['X1', 'X2'])
-tsne2dDf['Champion'] = champList
+# pca = PCA(n_components=2)
+# pcaMatrix = pca.fit_transform(champ_embedding)
 
-# Matplotlib
-fig = plt.figure(figsize=(3, 2), dpi=100)
-ax = fig.add_subplot(1, 1, 1)
+# mds = manifold.MDS(n_components = 2)
+# mdsMatrix = mds.fit_transform(champ_embedding)
 
-ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
-ax.axis('off')
-for i in range(0, len(champList)):
-    bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
-    ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+# tsne2dDf = pd.DataFrame(mdsMatrix, columns = ['X1', 'X2'])
+# tsne2dDf['Champion'] = champList
 
-fig.savefig("champion_clustering_tsne_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
-plt.close()
+# # Matplotlib
+# fig = plt.figure(figsize=(3, 2), dpi=100)
+# ax = fig.add_subplot(1, 1, 1)
+
+# ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
+# ax.axis('off')
+# for i in range(0, len(champList)):
+#     bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
+#     ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+
+# fig.savefig("champion_clustering_mds_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
+# plt.close()
