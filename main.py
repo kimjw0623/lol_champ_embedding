@@ -118,7 +118,7 @@ get_id_result = connId.execute(sel)
 ######################################################
 
 # Create DB
-masteryEngine = create_engine('sqlite:///summoner_mastery.db', echo=False)
+masteryEngine = create_engine('sqlite:///summoner_mastery_{}.db'.format(), echo=False)
 
 connMastery = masteryEngine.connect()
 
