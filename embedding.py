@@ -41,8 +41,6 @@ for champName in champion_info_response.json()['data'].keys():
 CHAMP_TO_INDEX = {}
 CHAMP_TO_INDEX = dict(zip(ID_TO_CHAMP.values(),range(162)))
 
-print(len(list(ID_TO_CHAMP.values())))
-
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, summonersMasteryList):
         super().__init__()
@@ -67,11 +65,10 @@ class Dataset(torch.utils.data.Dataset):
             result.append((CHAMP_TO_INDEX[comb[0]],CHAMP_TO_INDEX[comb[1]],similarity))
             
         result = torch.tensor(result)
-        # print(result.shape)
         return result
     
     # Select champion pair with weight
-    def _champion_choice(self,champPointDict):
+    def _champion_choice(self, champPointDict):
         # Give weight according to the mastery point
         pointList = [10 if x==None else pow(int(x),0.5) for x in list(champPointDict.values())[2:]]
         # Select 15 champions
@@ -81,7 +78,7 @@ class Dataset(torch.utils.data.Dataset):
             len(list(ID_TO_CHAMP.values()))
         champWeightedList = list(np.random.choice(np.array(list(ID_TO_CHAMP.values())), p=pointList, size=20, replace=False))
         champComb = list(itertools.combinations(champWeightedList, 2)) # list of tuple (champName, champName) <- string
-        # print(len(champComb))
+        
         return champComb
     
 class Model(nn.Module):
@@ -90,8 +87,6 @@ class Model(nn.Module):
         self.embedding = nn.Embedding(nChampion, nEmbedding)
         
     def forward(self, champ1, champ2): # champ1 : (batchsize, 1)
-        # champ1Embedding = torch.unsqueeze(self.embedding(champ1),1)
-        # champ2Embedding = torch.unsqueeze(self.embedding(champ2),2)
         dotResult = torch.bmm(torch.unsqueeze(self.embedding(champ1),1),
                               torch.unsqueeze(self.embedding(champ2),2))
         return dotResult
@@ -107,7 +102,6 @@ summonerMasteryResult = []
 for elem in masteryResult:
     if elem['sum'] > 500000:
         summonerMasteryResult.append(dict(elem))
-print(len(summonerMasteryResult))    
 time.sleep(2)
 
 ######
@@ -128,7 +122,7 @@ optimizer = optim.Adam(net.parameters())
 total_epoch = 150
 iteration = 0
 total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
-print(total_iter)
+
 # what I learn:
 if IS_TRAIN:
     for epoch in range(total_epoch):
@@ -164,50 +158,46 @@ for i in range(161):
     champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
     champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
     champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
-    print(list(champ_dict.keys())[:10])
-    print()
 
-###
 # Championbilder
 CHAMPION_BILDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
 ICON_ZOOM = 0.03
 REGION = 'kr'
 
-# championBilder = list()
-# champList = list(champion_info_response.json()['data'].keys())
-# for champion in tqdm(champList, total = len(champList)):
-#     while True:
-#         bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
-#         if bildAntwort.status_code == 200:
-#             break
-#         else:
-#             time.sleep(0.1)
-    
-#     championBilder.append(Image.open(BytesIO(bildAntwort.content)))
+championBilder = list()
+champList = list(champion_info_response.json()['data'].keys())
+for champion in tqdm(champList, total = len(champList)):
+    while True:
+        bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
+        if bildAntwort.status_code == 200:
+            break
+        else:
+            time.sleep(0.1)
+    championBilder.append(Image.open(BytesIO(bildAntwort.content)))
             
-# ###
-# # TSNE
-# tsne = manifold.TSNE(n_components = 2)
-# tsneMatrix = tsne.fit_transform(champ_embedding)
+###
+# TSNE
+tsne = manifold.TSNE(n_components = 2)
+tsneMatrix = tsne.fit_transform(champ_embedding)
 
-# pca = PCA(n_components=2)
-# pcaMatrix = pca.fit_transform(champ_embedding)
+pca = PCA(n_components=2)
+pcaMatrix = pca.fit_transform(champ_embedding)
 
-# mds = manifold.MDS(n_components = 2)
-# mdsMatrix = mds.fit_transform(champ_embedding)
+mds = manifold.MDS(n_components = 2)
+mdsMatrix = mds.fit_transform(champ_embedding)
 
-# tsne2dDf = pd.DataFrame(mdsMatrix, columns = ['X1', 'X2'])
-# tsne2dDf['Champion'] = champList
+tsne2dDf = pd.DataFrame(mdsMatrix, columns = ['X1', 'X2'])
+tsne2dDf['Champion'] = champList
 
-# # Matplotlib
-# fig = plt.figure(figsize=(3, 2), dpi=100)
-# ax = fig.add_subplot(1, 1, 1)
+# Matplotlib
+fig = plt.figure(figsize=(3, 2), dpi=100)
+ax = fig.add_subplot(1, 1, 1)
 
-# ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
-# ax.axis('off')
-# for i in range(0, len(champList)):
-#     bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
-#     ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
+ax.axis('off')
+for i in range(0, len(champList)):
+    bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
+    ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
 
-# fig.savefig("champion_clustering_mds_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
-# plt.close()
+fig.savefig("champion_clustering_mds_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
+plt.close()

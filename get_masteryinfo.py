@@ -27,7 +27,6 @@ GET_NEW_ID = False
 GET_NEW_MASTERY_POINT = False
 
 REGION = 'KR'
-INITIAL_ACCOUNT = 'unpause'
 TIER = 'master' # 'gold4'
 
 # URL-Endpoints
@@ -119,10 +118,4 @@ for row in tqdm(idList):
 
 sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
 result = connMastery.execute(sel)
-
-line = 0
-for row in result:
-    # print(row)
-    line += 1
-print(line)
 

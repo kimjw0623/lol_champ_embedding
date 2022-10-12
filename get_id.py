@@ -107,10 +107,3 @@ if GET_NEW_ID:
         
 sel = select(summoner_id_table.c.id) # get all column if blank 
 get_id_result = connId.execute(sel)
-
-
-line = 0
-for row in get_id_result:
-    print(row)
-    line += 1
-print(line)
