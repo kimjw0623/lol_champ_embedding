@@ -19,3 +19,8 @@ When a player plays two champions multiple times, we consider them to be similar
 
 Visualization with TSNE:
 ![champion_clustering_tsnr_kr](./result/champion_clustering_tsne_kr.png)
+
+## Reference
+
+[WillKoehrsen's work](https://github.com/WillKoehrsen/wikipedia-data-science/blob/master/notebooks/Book%20Recommendation%20System.ipynb)
+[giantZorg's work](https://github.com/giantZorg/Lol_champion_embeddings)
