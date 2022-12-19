@@ -9,7 +9,7 @@ From [op.gg](https://op.gg/leaderboards/tier/) ranking page with BeautifulSoup
 
 ### 2. Save the summoner's unique id and mastery point in DB
 
-Used RiotAPI and SQLite
+Used [RiotAPI](https://developer.riotgames.com/apis/) and SQLite
 
 ### 3. Train champion embedding based on the similarity score
 
