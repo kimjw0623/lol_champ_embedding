@@ -5,7 +5,7 @@ League of legend champion embedding with similarity learning based on user prefe
 ## Method
 ### 1. Get summoner ids with crawling
 
-From op.gg ranking page with BeautifulSoup
+From [op.gg](op.gg) ranking page with BeautifulSoup
 
 ### 2. Save the summoner's unique id and mastery point in DB
 
