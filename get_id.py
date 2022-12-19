@@ -27,12 +27,12 @@ GET_NEW_ID = True
 GET_NEW_MASTERY_POINT = False
 
 REGION = 'KR'
-INITIAL_ACCOUNT = 'unpause'
-TIER = 'master' # 'gold4'
+TIER = 'master'
 
 # URL-Endpoints
 URL_CHAMPION_INFO = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/data/en_US/champion.json'
 URL_MASTERY_POINTS = 'https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/{summonerId}?api_key={apiKey}'
+URL_ID_BY_NAME = 'https://{region}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{userName}?api_key={apiKey}'
 
 # Get api key
 load_dotenv(verbose=True)
@@ -44,28 +44,22 @@ if apikey is None:
 else:
     logging.debug('Get api key successfully')
 
-# Get champion info  
-# TODO: get champion id  
+# Get champion info
 champion_info_response = requests.get(URL_CHAMPION_INFO)
 
 ID_TO_CHAMP = {}
 for champName in champion_info_response.json()['data'].keys():
     ID_TO_CHAMP[int(champion_info_response.json()['data'][champName]['key'])] = champName.lower()
 
-###########################################################################
-
+# Get summoner name list
 summonerNameList = []
-
 with open(f'summoner_name/id_list_{TIER}.csv', mode='r', encoding='utf-8-sig') as inp:
     reader = csv.reader(inp)
     for rows in reader:
         summonerNameList.append(rows[1])
 
-URL_ID_BY_NAME = 'https://{region}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{userName}?api_key={apiKey}'
-
 # Create DB
 dbEngine = create_engine(f'sqlite:///database/summoner_ids_{TIER}.db', echo=False)
-
 
 # Create table
 meta = MetaData()
@@ -76,7 +70,7 @@ summoner_id_table = Table(
     Column('puuid', String),
 )
 
-# Drop existing table
+# Drop table if already exists
 if REMOVE_ID_TABLE:
     meta.create_all(dbEngine)
     connId = dbEngine.connect()
@@ -86,13 +80,14 @@ if REMOVE_ID_TABLE:
 # Fill table
 connId = dbEngine.connect()
 
+# Save summoner id info
 if GET_NEW_ID:
     apiCall = 0
     for summonerName in tqdm(summonerNameList):
+        apiCall += 1
         summonerInfoResponse = requests.get(URL_ID_BY_NAME.format(region = REGION,
                                                                   userName = summonerName,
                                                                   apiKey = apikey))
-        apiCall += 1
         summonerInfo = json.loads(summonerInfoResponse.text)
         try:
             summonerInfo['id']

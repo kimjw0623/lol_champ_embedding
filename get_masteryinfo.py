@@ -43,8 +43,7 @@ if apikey is None:
 else:
     logging.debug('Get api key successfully')
     
-# Get champion info  
-# TODO: get champion id  
+# Get champion info   
 champion_info_response = requests.get(URL_CHAMPION_INFO)
 
 ID_TO_CHAMP = {}
@@ -66,7 +65,8 @@ summoner_id_table = Table(
 # Fill table
 connId = dbEngine.connect()
 
-sel = select(summoner_id_table.c.id) # get all column if blank 
+# Load summoner ids
+sel = select(summoner_id_table.c.id) 
 
 # Create DB
 masteryEngine = create_engine(f'sqlite:///database/summoner_mastery_{TIER}.db'.format(), echo=False)
@@ -87,7 +87,7 @@ checkUniqueId = []
 
 for row in tqdm(idList):
     if row.id in checkUniqueId:
-        print('duplicated')
+        logging.debug('Duplicate ID')
         continue
     summonerMasteryResponse = requests.get(URL_MASTERY_BY_ID.format(
                                         region = REGION,
@@ -113,9 +113,7 @@ for row in tqdm(idList):
     summonerMasteryDf = pd.DataFrame(summonerMasteryDic, index = [0])
     summonerMasteryDf.to_sql('summoner_mastery_table', connMastery, if_exists='append', index=False)
     if apiCall%99 == 0:
-        # print('sleep')
         time.sleep(120)
 
 sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
 result = connMastery.execute(sel)
-

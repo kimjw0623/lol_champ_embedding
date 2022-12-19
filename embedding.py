@@ -30,6 +30,9 @@ from sqlalchemy import Table, Column, Integer, String, MetaData
 from sqlalchemy.sql import select
 from sqlalchemy import text
 
+MIN_MASTERY_POINT = 10
+MIN_SUM_MASTERY_POINT = 500000
+
 # Get champion list w/ id
 URL_CHAMPION_INFO = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/data/en_US/champion.json'
 champion_info_response = requests.get(URL_CHAMPION_INFO)
@@ -57,9 +60,9 @@ class Dataset(torch.utils.data.Dataset):
             champ1Point = pointDict[comb[0]]
             champ2Point = pointDict[comb[1]]
             if champ1Point is None:
-                champ1Point = 10
+                champ1Point = MIN_MASTERY_POINT
             if champ2Point is None:
-                champ2Point = 10
+                champ2Point = MIN_MASTERY_POINT
             similarity = math.sqrt(champ1Point * champ2Point) / pointDict['sum'] # normalize point?
             # (champ1 index, champ2 index, dot product): Not champion id!!
             result.append((CHAMP_TO_INDEX[comb[0]],CHAMP_TO_INDEX[comb[1]],similarity))
@@ -100,11 +103,12 @@ sel = select(meta.tables['summoner_mastery_table']) # get all column if blank
 masteryResult = connMastery.execute(sel)
 summonerMasteryResult = []
 for elem in masteryResult:
-    if elem['sum'] > 500000:
+    if elem['sum'] > MIN_SUM_MASTERY_POINT:
         summonerMasteryResult.append(dict(elem))
 time.sleep(2)
 
-######
+######################
+
 IS_TRAIN = False
 batch_size = 64
 
@@ -123,7 +127,6 @@ total_epoch = 150
 iteration = 0
 total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
 
-# what I learn:
 if IS_TRAIN:
     for epoch in range(total_epoch):
         for account in training_generator:
@@ -159,7 +162,7 @@ for i in range(161):
     champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
     champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
 
-# Championbilder
+# Championbinder
 CHAMPION_BILDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
 ICON_ZOOM = 0.03
 REGION = 'kr'
@@ -175,8 +178,7 @@ for champion in tqdm(champList, total = len(champList)):
             time.sleep(0.1)
     championBilder.append(Image.open(BytesIO(bildAntwort.content)))
             
-###
-# TSNE
+# Dimensionality reduction
 tsne = manifold.TSNE(n_components = 2)
 tsneMatrix = tsne.fit_transform(champ_embedding)
 

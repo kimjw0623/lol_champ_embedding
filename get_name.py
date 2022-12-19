@@ -1,4 +1,3 @@
-import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -8,9 +7,10 @@ import csv
 options = webdriver.ChromeOptions()
 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 driver = webdriver.Chrome('./chromedriver', options=options)
-#regex = re.compile('[^a-zA-Z]')
 
 summoners_id_list = []
+
+# Save name of summoner as .csv file
 with open('id_list_silver4.csv', 'w', newline='', encoding='utf-8-sig') as csvfile:
     spamwriter = csv.writer(csvfile)
     idx = 0
