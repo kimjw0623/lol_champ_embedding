@@ -3,9 +3,9 @@
 League of legend champion embedding with similarity learning based on user preference
 
 ## Method
-### 1. Get summoner ids with crawling
+### 1. Get summoner ids
 
-From [op.gg](https://op.gg/leaderboards/tier/) ranking page with BeautifulSoup
+Crawling from [op.gg](https://op.gg/leaderboards/tier/) ranking page with Celenium
 
 ### 2. Save the summoner's unique id and mastery point in DB
 
@@ -13,7 +13,7 @@ Used [RiotAPI](https://developer.riotgames.com/apis/) and SQLite
 
 ### 3. Train champion embedding based on the similarity score
 
-When a player plays champions for many times, we consider them to be similar.
+When a player plays champions for many times, we consider them to be similar
 
 ### 4. Visualize champions
 
