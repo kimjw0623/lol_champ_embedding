@@ -26,6 +26,10 @@ from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, Integer, String, MetaData
 from sqlalchemy.sql import select
 
+from option import args
+import get_id
+import get_masteryinfo
+
 MIN_MASTERY_POINT = 10
 MIN_SUM_MASTERY_POINT = 500000
 
@@ -39,6 +43,7 @@ for champName in champion_info_response.json()['data'].keys():
 
 CHAMP_TO_INDEX = {}
 CHAMP_TO_INDEX = dict(zip(ID_TO_CHAMP.values(),range(162)))
+CHAMP_NUM = len(CHAMP_TO_INDEX)
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, summonersMasteryList):
@@ -80,122 +85,135 @@ class Dataset(torch.utils.data.Dataset):
         return champComb
     
 class Model(nn.Module):
-    def __init__(self, nChampion, nEmbedding):
+    def __init__(self, champ_num, emb_num):
         super(Model, self).__init__()
-        self.embedding = nn.Embedding(nChampion, nEmbedding)
+        self.embedding = nn.Embedding(champ_num, emb_num)
         
     def forward(self, champ1, champ2): # champ1 : (batchsize, 1)
         dotResult = torch.bmm(torch.unsqueeze(self.embedding(champ1),1),
                               torch.unsqueeze(self.embedding(champ2),2))
         return dotResult
-    
-# Get summoner's mastery points    
-masteryEngine = create_engine('sqlite:///summoner_mastery.db', echo=False)
-connMastery = masteryEngine.connect()
-meta = MetaData()
-meta.reflect(bind = masteryEngine)
-sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
-masteryResult = connMastery.execute(sel)
 
-summonerMasteryResult = []
-for elem in masteryResult:
-    if elem['sum'] > MIN_SUM_MASTERY_POINT:
-        summonerMasteryResult.append(dict(elem))
-time.sleep(1)
+def main():
+    # Setting & Hyperparameters 
+    get_data = args.get_data
+    is_train = args.is_train
 
-######################
+    region = args.region
+    tier = args.tier
+    embedding_num = args.embed_num
+    total_epoch = args.tot_epoch
+    batch_size = args.batch_size
 
-IS_TRAIN = False
-batch_size = 64
+    # Get data using API. If not, use demo data
+    if get_data:
+        get_id.save_id(region,tier)
+        get_masteryinfo.save_mastery(region,tier)
 
-# Training step
-train_dataset = Dataset(summonerMasteryResult)
-training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
+    # Get summoner's mastery points    
+    masteryEngine = create_engine('sqlite:///database/summoner_mastery_master.db', echo=False)
+    connMastery = masteryEngine.connect()
+    meta = MetaData()
+    meta.reflect(bind = masteryEngine)
+    sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
+    masteryResult = connMastery.execute(sel)
 
-use_cuda = torch.cuda.is_available()
-device = torch.device("cuda:0" if use_cuda else "cpu")
-print(f'Torch device: {device}')
+    summonerMasteryResult = []
+    for elem in masteryResult:
+        if elem['sum'] > MIN_SUM_MASTERY_POINT:
+            summonerMasteryResult.append(dict(elem))
+    time.sleep(1)
 
-net = Model(161,15).to(device)
-net.train()
-optimizer = optim.Adam(net.parameters())
-total_epoch = 150
-iteration = 0
-total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
+    batch_size = 64
 
-if IS_TRAIN:
-    for epoch in range(total_epoch):
-        for account in training_generator:
-            # account: (B, 105, 3)
-            optimizer.zero_grad()
-            account = rearrange(account, 'B C A -> (B C) A').to(device)
-            champ1 = account[:,0].to(torch.int) # Champoin id
-            champ2 = account[:,1].to(torch.int) # Champoin id
-            gt_score = account[:,2] # Dot product of mastery point 
-            pred_score = net(champ1,champ2).view(-1,)
-            loss = F.mse_loss(pred_score, gt_score) # Get batch avg loss
-            iteration += 1
-            print(f'Iter: {iteration:06d} / {total_iter:06d} | Loss: {loss.item():.6f}')
-            loss.backward()
-            optimizer.step()
-    # Save model
-    torch.save({'model_state_dict': net.state_dict()}, 'embedding.pt')
-else:
-    # Load model
-    net.load_state_dict(torch.load('embedding.pt')['model_state_dict'])
-    net.eval()
+    # Training step
+    train_dataset = Dataset(summonerMasteryResult)
+    training_generator = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
 
-# Embedding vector visualization
-for param in net.parameters():
-    print(type(param), param.size())
-    champ_embedding = param.cpu().detach().numpy()
-    break
-    
-champ_embedding = champ_embedding / np.linalg.norm(champ_embedding, axis = 1).reshape(-1, 1)
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0" if use_cuda else "cpu")
+    print(f'Torch device: {device}')
 
-for i in range(161):
-    champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
-    champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
-    champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
+    net = Model(CHAMP_NUM,embedding_num).to(device)
+    net.train()
+    optimizer = optim.Adam(net.parameters())
+    cur_iteration = 0
+    total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
 
-# Championbinder
-CHAMPION_BINDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
-ICON_ZOOM = 0.03
-REGION = 'kr'
+    if is_train:
+        for epoch in range(total_epoch):
+            for account in training_generator: # account: (B, N, 3)
+                optimizer.zero_grad()
+                account = rearrange(account, 'B C A -> (B C) A').to(device)
+                champ1 = account[:,0].to(torch.int) # Champoin id
+                champ2 = account[:,1].to(torch.int) # Champoin id
+                gt_score = account[:,2] # Dot product of mastery point 
+                pred_score = net(champ1,champ2).view(-1,)
+                loss = F.mse_loss(pred_score, gt_score) # Get batch avg loss
+                cur_iteration += 1
+                print(f'Iter: {cur_iteration:06d} / {total_iter:06d} | Loss: {loss.item():.6f}')
+                loss.backward()
+                optimizer.step()
+        # Save model
+        torch.save({'model_state_dict': net.state_dict()}, 'models/embedding.pt')
+    else:
+        # Load model
+        net.load_state_dict(torch.load('models/embedding.pt')['model_state_dict'])
+        net.eval()
 
-championBinder = list()
-champList = list(champion_info_response.json()['data'].keys())
-for champion in tqdm(champList, total = len(champList)):
-    while True:
-        bindAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BINDER_URL, champion = champion))
-        if bindAntwort.status_code == 200:
-            break
-        else:
-            time.sleep(0.1)
-    championBinder.append(Image.open(BytesIO(bindAntwort.content)))
-            
-# Dimensionality reduction
-tsne = manifold.TSNE(n_components = 2)
-tsneMatrix = tsne.fit_transform(champ_embedding)
+    # Embedding vector visualization
+    for param in net.parameters():
+        champ_embedding = param.cpu().detach().numpy()
+        
+    champ_embedding = champ_embedding / np.linalg.norm(champ_embedding, axis = 1).reshape(-1, 1)
 
-pca = PCA(n_components=2)
-pcaMatrix = pca.fit_transform(champ_embedding)
+    for i in range(CHAMP_NUM):
+        champ_vector = (np.expand_dims(champ_embedding[i],0) @ champ_embedding.T)[0]
+        champ_dict = dict(zip(ID_TO_CHAMP.values(), champ_vector))
+        champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
 
-mds = manifold.MDS(n_components = 2)
-mdsMatrix = mds.fit_transform(champ_embedding)
+    # Championbinder
+    CHAMPION_BINDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
+    ICON_ZOOM = 0.03
 
-tsne2dDf = pd.DataFrame(pcaMatrix, columns = ['X1', 'X2'])
-tsne2dDf['Champion'] = champList
+    champion_binder = list()
+    champ_binder_list = list(champion_info_response.json()['data'].keys())
+    for champion in tqdm(champ_binder_list, total = len(champ_binder_list)):
+        while True:
+            bindAntwort = requests.get(f'{CHAMPION_BINDER_URL}{champion}.png')
+            if bindAntwort.status_code == 200:
+                break
+            else:
+                time.sleep(0.1)
+        champion_binder.append(Image.open(BytesIO(bindAntwort.content)))
+                
+    # Dimensionality reduction
+    reducing_method = 'tsne'
+    if reducing_method == 'tsne':
+        tsne = manifold.TSNE(n_components = 2)
+        reduced_matrix = tsne.fit_transform(champ_embedding)
+    elif reducing_method == 'mds':
+        mds = manifold.MDS(n_components = 2)
+        reduced_matrix = mds.fit_transform(champ_embedding)
+    else:
+        pca = PCA(n_components=2)
+        reduced_matrix = pca.fit_transform(champ_embedding)
 
-# Matplotlib
-fig = plt.figure(figsize=(3, 2), dpi=100)
-ax = fig.add_subplot(1, 1, 1)
+    tsne2dDf = pd.DataFrame(reduced_matrix, columns = ['X1', 'X2'])
+    tsne2dDf['Champion'] = champ_binder_list
 
-ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
-ax.axis('off')
-for i in range(0, len(champList)):
-    bindBox = OffsetImage(championBinder[i], zoom = ICON_ZOOM)
-    ax.add_artist(AnnotationBbox(bindBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+    # Matplotlib
+    fig = plt.figure(figsize=(3, 2), dpi=100)
+    ax = fig.add_subplot(1, 1, 1)
 
-fig.savefig("champion_clustering_mds_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
-plt.close()
+    ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
+    ax.axis('off')
+    for i in range(0, len(champ_binder_list)):
+        bindBox = OffsetImage(champion_binder[i], zoom = ICON_ZOOM)
+        ax.add_artist(AnnotationBbox(bindBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+
+    fig.savefig(f"results/champion_clustering_{reducing_method}_{region}_{tier}.png", transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
+    plt.close()
+
+if __name__ == '__main__':
+    main()

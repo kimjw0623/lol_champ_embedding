@@ -1,6 +1,6 @@
-# LoL Champion Embedding
+# LoL Champion Similarity
 
-League of legend champion embedding with similarity learning based on user preference
+Visualize league of legend champion similarity based on user play tendency
 
 ## Method
 ### 1. Get summoner ids
@@ -22,16 +22,26 @@ Visualize the embedding vector of each champion by dimensionality reduction meth
 ## Result
 
 Visualization with TSNE:
-![champion_clustering_tsnr_kr](./result/champion_clustering_tsne_kr.png)
+![champion_clustering_tsnr_kr](./results/champion_clustering_tsne_KR_master.png)
 
-## How to use
+## Demo
 
 ```
-python get_name.py
-python get_id.py
-python get_masteryinfo.py
 python embedding.py
 ```
+You can add keyword argument in option.py
+
+## Training details
+
+Our neural network stores learnable champion embedding vectors with a certain dimension using [`nn.Embedding()`](https://pytorch.org/docs/stable/generated/torch.nn.Embedding.html).
+```python
+nn.Embedding(num_of_embeddings = number of total champion, embedding_dim = target embedding dimension)
+```
+Our network gets two champion ids as input and returns the dot product (similarity) of two champion embedding vectors.
+
+We get the ground-truth similarity score of two champions from real play data. Then we train the network with MSE loss between GT and the dot product of two embedding vectors.
+
+* GT similarity score will differ depending on the user, so the network has a weakness in outlier data. To minimize it, we use a large batch size (large user data) for each optimization step. 
 
 ## Reference
 
