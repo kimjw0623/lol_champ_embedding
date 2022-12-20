@@ -1,4 +1,3 @@
-from unittest import result
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,7 +5,6 @@ import torch.nn.functional as F
 
 import numpy as np
 import requests
-import random
 import itertools
 import math
 import time
@@ -22,13 +20,11 @@ from sklearn import manifold
 from sklearn.decomposition import PCA
 
 # SQL and ORM
-import sqlite3
 import pandas as pd
 import sqlalchemy
 from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, Integer, String, MetaData
 from sqlalchemy.sql import select
-from sqlalchemy import text
 
 MIN_MASTERY_POINT = 10
 MIN_SUM_MASTERY_POINT = 500000
@@ -74,11 +70,10 @@ class Dataset(torch.utils.data.Dataset):
     def _champion_choice(self, champPointDict):
         # Give weight according to the mastery point
         pointList = [10 if x==None else pow(int(x),0.5) for x in list(champPointDict.values())[2:]]
-        # Select 15 champions
         pointList = np.array(pointList)/np.ndarray.sum(np.array(pointList))
-        if len(pointList) != len(list(ID_TO_CHAMP.values())):
-            len(pointList)
-            len(list(ID_TO_CHAMP.values()))
+        assert(len(pointList) == len(list(ID_TO_CHAMP.values())))
+
+        # Select 20 champions
         champWeightedList = list(np.random.choice(np.array(list(ID_TO_CHAMP.values())), p=pointList, size=20, replace=False))
         champComb = list(itertools.combinations(champWeightedList, 2)) # list of tuple (champName, champName) <- string
         
@@ -101,11 +96,12 @@ meta = MetaData()
 meta.reflect(bind = masteryEngine)
 sel = select(meta.tables['summoner_mastery_table']) # get all column if blank 
 masteryResult = connMastery.execute(sel)
+
 summonerMasteryResult = []
 for elem in masteryResult:
     if elem['sum'] > MIN_SUM_MASTERY_POINT:
         summonerMasteryResult.append(dict(elem))
-time.sleep(2)
+time.sleep(1)
 
 ######################
 
@@ -120,7 +116,7 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 print(f'Torch device: {device}')
 
-net = Model(161,15)#.cuda()
+net = Model(161,15).to(device)
 net.train()
 optimizer = optim.Adam(net.parameters())
 total_epoch = 150
@@ -130,14 +126,14 @@ total_iter = int(total_epoch*train_dataset.__len__() / batch_size)
 if IS_TRAIN:
     for epoch in range(total_epoch):
         for account in training_generator:
-            # account: (B, 1, 105, 3)
+            # account: (B, 105, 3)
             optimizer.zero_grad()
-            account = rearrange(account, 'B C A -> (B C) A')
-            champ1 = account[:,0].to(torch.int)
-            champ2 = account[:,1].to(torch.int)
-            gt_score = account[:,2] # dot product of mastery point
+            account = rearrange(account, 'B C A -> (B C) A').to(device)
+            champ1 = account[:,0].to(torch.int) # Champoin id
+            champ2 = account[:,1].to(torch.int) # Champoin id
+            gt_score = account[:,2] # Dot product of mastery point 
             pred_score = net(champ1,champ2).view(-1,)
-            loss = F.mse_loss(pred_score, gt_score) # get batch avg loss! 
+            loss = F.mse_loss(pred_score, gt_score) # Get batch avg loss
             iteration += 1
             print(f'Iter: {iteration:06d} / {total_iter:06d} | Loss: {loss.item():.6f}')
             loss.backward()
@@ -163,20 +159,20 @@ for i in range(161):
     champ_dict = dict(sorted(champ_dict.items(), key=lambda item: item[1], reverse=True))
 
 # Championbinder
-CHAMPION_BILDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
+CHAMPION_BINDER_URL = 'http://ddragon.leagueoflegends.com/cdn/12.14.1/img/champion/'
 ICON_ZOOM = 0.03
 REGION = 'kr'
 
-championBilder = list()
+championBinder = list()
 champList = list(champion_info_response.json()['data'].keys())
 for champion in tqdm(champList, total = len(champList)):
     while True:
-        bildAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BILDER_URL, champion = champion))
-        if bildAntwort.status_code == 200:
+        bindAntwort = requests.get('{url}{champion}.png'.format(url = CHAMPION_BINDER_URL, champion = champion))
+        if bindAntwort.status_code == 200:
             break
         else:
             time.sleep(0.1)
-    championBilder.append(Image.open(BytesIO(bildAntwort.content)))
+    championBinder.append(Image.open(BytesIO(bindAntwort.content)))
             
 # Dimensionality reduction
 tsne = manifold.TSNE(n_components = 2)
@@ -188,7 +184,7 @@ pcaMatrix = pca.fit_transform(champ_embedding)
 mds = manifold.MDS(n_components = 2)
 mdsMatrix = mds.fit_transform(champ_embedding)
 
-tsne2dDf = pd.DataFrame(mdsMatrix, columns = ['X1', 'X2'])
+tsne2dDf = pd.DataFrame(pcaMatrix, columns = ['X1', 'X2'])
 tsne2dDf['Champion'] = champList
 
 # Matplotlib
@@ -198,8 +194,8 @@ ax = fig.add_subplot(1, 1, 1)
 ax.scatter(tsne2dDf['X1'], tsne2dDf['X2'], color = 'white')
 ax.axis('off')
 for i in range(0, len(champList)):
-    bildBox = OffsetImage(championBilder[i], zoom = ICON_ZOOM)
-    ax.add_artist(AnnotationBbox(bildBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
+    bindBox = OffsetImage(championBinder[i], zoom = ICON_ZOOM)
+    ax.add_artist(AnnotationBbox(bindBox, tsne2dDf.iloc[i][['X1', 'X2']].values, frameon = False))
 
 fig.savefig("champion_clustering_mds_{region}.png".format(region = REGION), transparent = False, bbox_inches = 'tight', pad_inches = 0, dpi = 1000)
 plt.close()
