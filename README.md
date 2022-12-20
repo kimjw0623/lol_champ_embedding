@@ -24,6 +24,15 @@ Visualize the embedding vector of each champion by dimensionality reduction meth
 Visualization with TSNE:
 ![champion_clustering_tsnr_kr](./result/champion_clustering_tsne_kr.png)
 
+## How to use
+
+```
+python get_name.py
+python get_id.py
+python get_masteryinfo.py
+python embedding.py
+```
+
 ## Reference
 
 [WillKoehrsen's work](https://github.com/WillKoehrsen/wikipedia-data-science/blob/master/notebooks/Book%20Recommendation%20System.ipynb)
