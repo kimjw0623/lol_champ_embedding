@@ -24,6 +24,8 @@ Visualize the embedding vector of each champion by dimensionality reduction meth
 Visualization with TSNE:
 ![champion_clustering_tsnr_kr](./results/champion_clustering_tsne_KR_master.png)
 
+The champions with similar roles (i.e. 'position') are clustered well.
+
 ## Demo
 
 ```
