@@ -31,7 +31,7 @@ The champions with similar roles (i.e. 'position') are clustered well.
 ```
 python embedding.py
 ```
-You can add keyword argument in option.py
+The resulting visualization will be saved in the `/results/` folder.
 
 ## Training details
 
